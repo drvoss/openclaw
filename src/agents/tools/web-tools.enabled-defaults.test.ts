@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { withFetchPreconnect } from "../../test-utils/fetch-mock.js";
 import { createWebFetchTool, createWebSearchTool } from "./web-tools.js";
 
@@ -9,7 +9,7 @@ function installMockFetch(payload: unknown) {
       json: () => Promise.resolve(payload),
     } as Response),
   );
-  global.fetch = withFetchPreconnect(mockFetch);
+  vi.stubGlobal("fetch", withFetchPreconnect(mockFetch));
   return mockFetch;
 }
 
@@ -98,16 +98,9 @@ describe("web tools defaults", () => {
 });
 
 describe("web_search country and language parameters", () => {
-  const priorFetch = global.fetch;
-
-  beforeEach(() => {
-    vi.stubEnv("BRAVE_API_KEY", "test-key");
-  });
-
-  afterEach(() => {
-    vi.unstubAllEnvs();
-    global.fetch = priorFetch;
-  });
+  const braveConfig = {
+    tools: { web: { search: { provider: "brave" as const, apiKey: "test-key" } } },
+  };
 
   async function runBraveSearchAndGetUrl(
     params: Partial<{
@@ -118,7 +111,7 @@ describe("web_search country and language parameters", () => {
     }>,
   ) {
     const mockFetch = installMockFetch({ web: { results: [] } });
-    const tool = createWebSearchTool({ config: undefined, sandboxed: true });
+    const tool = createWebSearchTool({ config: braveConfig, sandboxed: true });
     expect(tool).not.toBeNull();
     await tool?.execute?.("call-1", { query: "test", ...params });
     expect(mockFetch).toHaveBeenCalled();
@@ -137,7 +130,7 @@ describe("web_search country and language parameters", () => {
 
   it("rejects invalid freshness values", async () => {
     const mockFetch = installMockFetch({ web: { results: [] } });
-    const tool = createWebSearchTool({ config: undefined, sandboxed: true });
+    const tool = createWebSearchTool({ config: braveConfig, sandboxed: true });
     const result = await tool?.execute?.("call-1", { query: "test", freshness: "yesterday" });
 
     expect(mockFetch).not.toHaveBeenCalled();
@@ -146,11 +139,8 @@ describe("web_search country and language parameters", () => {
 });
 
 describe("web_search perplexity baseUrl defaults", () => {
-  const priorFetch = global.fetch;
-
   afterEach(() => {
     vi.unstubAllEnvs();
-    global.fetch = priorFetch;
   });
 
   it("passes freshness to Perplexity provider as search_recency_filter", async () => {
@@ -223,11 +213,8 @@ describe("web_search perplexity baseUrl defaults", () => {
 });
 
 describe("web_search kimi provider", () => {
-  const priorFetch = global.fetch;
-
   afterEach(() => {
     vi.unstubAllEnvs();
-    global.fetch = priorFetch;
   });
 
   it("returns a setup hint when Kimi key is missing", async () => {
@@ -280,7 +267,7 @@ describe("web_search kimi provider", () => {
         { status: 200, headers: { "content-type": "application/json" } },
       );
     });
-    global.fetch = withFetchPreconnect(mockFetch);
+    vi.stubGlobal("fetch", withFetchPreconnect(mockFetch));
 
     const tool = createKimiSearchTool({
       apiKey: "kimi-config-key",
@@ -316,7 +303,9 @@ describe("web_search kimi provider", () => {
 });
 
 describe("web_search external content wrapping", () => {
-  const priorFetch = global.fetch;
+  const braveExternalConfig = {
+    tools: { web: { search: { provider: "brave" as const, apiKey: "test-key" } } },
+  };
 
   function installBraveResultsFetch(
     result: Record<string, unknown>,
@@ -332,12 +321,12 @@ describe("web_search external content wrapping", () => {
       } as Response),
     ),
   ) {
-    global.fetch = withFetchPreconnect(mock);
+    vi.stubGlobal("fetch", withFetchPreconnect(mock));
     return mock;
   }
 
   async function executeBraveSearch(query: string) {
-    const tool = createWebSearchTool({ config: undefined, sandboxed: true });
+    const tool = createWebSearchTool({ config: braveExternalConfig, sandboxed: true });
     return tool?.execute?.("call-1", { query });
   }
 
@@ -348,7 +337,7 @@ describe("web_search external content wrapping", () => {
         json: () => Promise.resolve(payload),
       } as Response),
     );
-    global.fetch = withFetchPreconnect(mock);
+    vi.stubGlobal("fetch", withFetchPreconnect(mock));
     return mock;
   }
 
@@ -362,11 +351,9 @@ describe("web_search external content wrapping", () => {
 
   afterEach(() => {
     vi.unstubAllEnvs();
-    global.fetch = priorFetch;
   });
 
   it("wraps Brave result descriptions", async () => {
-    vi.stubEnv("BRAVE_API_KEY", "test-key");
     installBraveResultsFetch({
       title: "Example",
       url: "https://example.com",
@@ -390,7 +377,6 @@ describe("web_search external content wrapping", () => {
   });
 
   it("does not wrap Brave result urls (raw for tool chaining)", async () => {
-    vi.stubEnv("BRAVE_API_KEY", "test-key");
     const url = "https://example.com/some-page";
     installBraveResultsFetch({
       title: "Example",
@@ -406,7 +392,6 @@ describe("web_search external content wrapping", () => {
   });
 
   it("does not wrap Brave site names", async () => {
-    vi.stubEnv("BRAVE_API_KEY", "test-key");
     installBraveResultsFetch({
       title: "Example",
       url: "https://example.com/some/path",
@@ -420,7 +405,6 @@ describe("web_search external content wrapping", () => {
   });
 
   it("does not wrap Brave published ages", async () => {
-    vi.stubEnv("BRAVE_API_KEY", "test-key");
     installBraveResultsFetch({
       title: "Example",
       url: "https://example.com",
